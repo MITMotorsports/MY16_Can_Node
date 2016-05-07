@@ -5,7 +5,7 @@
 
 ### PROJECT_DIR
 ### This is the path to where you have created/cloned your project
-PROJECT_DIR       = $(HOME)/FSAE/Arduino
+PROJECT_DIR 			:= $(realpath $(abspath $(lastword $(MAKEFILE_LIST)))/../../..)
 
 ### AVR_GCC_VERSION
 ### Check if the version is equal or higher than 4.9
