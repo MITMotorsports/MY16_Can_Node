@@ -12,9 +12,12 @@ const float PORT_THROTTLE_SCALE = STARBOARD_THROTTLE_SCALE;
 const int STARBOARD_THROTTLE_OFFSET = -97;
 const int PORT_THROTTLE_OFFSET = -97;
 
+const float BRAKE_SCALE = 1;
+const float BRAKE_OFFSET = -130;
+
 const unsigned char RPM_MESSAGE_ID = 0x10;
 const int RPM_MESSAGE_PERIOD = 100;
-const int RPM_READING_PERIOD = 10;
+const int RPM_READING_PERIOD = 100;
 const unsigned int MOVING_AVG_WIDTH = RPM_MESSAGE_PERIOD / RPM_READING_PERIOD;
 const int CLICKS_PER_REVOLUTION = 22;
 const float REVOLUTIONS_PER_CLICK = 1.0 / CLICKS_PER_REVOLUTION;
@@ -30,6 +33,24 @@ Task recordRpmTask(RPM_READING_PERIOD, recordRpm);
 Task sendRpmCanMessageTask(RPM_MESSAGE_PERIOD, sendRpmCanMessage);
 Task sendAnalogCanMessageTask(ANALOG_MESSAGE_PERIOD, sendAnalogCanMessage);
 
+void logStarboardEncoderClick() {
+  starboardClicks++;
+  Serial.print("Right click ");
+  Serial.println(starboardClicks);
+}
+
+void logPortEncoderClick() {
+  portClicks++;
+  Serial.print("Left click ");
+  Serial.println(portClicks);
+}
+
+void resetClicksAndTimer(const unsigned long curr) {
+  lastRpmTime = curr;
+  starboardClicks = 0;
+  portClicks = 0;
+}
+
 // Implementation
 void setup() {
   Serial.begin(115200);
@@ -37,24 +58,20 @@ void setup() {
 
   pinMode(STARBOARD_THROTTLE_PIN, INPUT);
   pinMode(PORT_THROTTLE_PIN, INPUT);
-  pinMode(STARBOARD_ENCODER_PIN, INPUT_PULLUP);
+  pinMode(STARBOARD_BRAKE_PIN, INPUT);
+  pinMode(PORT_BRAKE_PIN, INPUT);
+
   pinMode(PORT_ENCODER_PIN, INPUT_PULLUP);
+  pinMode(STARBOARD_ENCODER_PIN, INPUT_PULLUP);
 
-  attachInterrupt(digitalPinToInterrupt(STARBOARD_ENCODER_PIN), logPortEncoderClick, RISING);
-  attachInterrupt(digitalPinToInterrupt(PORT_ENCODER_PIN), logStarboardEncoderClick, RISING);
+  attachInterrupt(digitalPinToInterrupt(PORT_ENCODER_PIN), logPortEncoderClick, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(STARBOARD_ENCODER_PIN), logStarboardEncoderClick, CHANGE);
 
-  SoftTimer.add(&recordRpmTask);
+  // SoftTimer.add(&recordRpmTask);
   SoftTimer.add(&sendAnalogCanMessageTask);
 
   resetClicksAndTimer(micros());
-}
-
-void logStarboardEncoderClick() {
-  starboardClicks++;
-}
-
-void logPortEncoderClick() {
-  portClicks++;
+  Serial.println("Started Can Node");
 }
 
 int truncateToByte(int val) {
@@ -72,20 +89,39 @@ unsigned char readingToCan(const int val, const float scale, const int offset=0)
 }
 
 void sendAnalogCanMessage(Task*) {
-  const int starboard_raw = analogRead(STARBOARD_THROTTLE_PIN);
-  const int port_raw = analogRead(PORT_THROTTLE_PIN);
-  const unsigned char starboard_scaled = readingToCan(
-    starboard_raw,
+  const int starboard_throttle_raw = analogRead(STARBOARD_THROTTLE_PIN);
+  const int port_throttle_raw = analogRead(PORT_THROTTLE_PIN);
+
+  const int bad_brake_raw = analogRead(STARBOARD_BRAKE_PIN);
+  const int good_brake_raw = analogRead(PORT_BRAKE_PIN);
+
+  Serial.print("throttle_right: ");
+  Serial.print(starboard_throttle_raw);
+  Serial.print(", throttle_left: ");
+  Serial.print(port_throttle_raw);
+  Serial.print(", brake_bad: ");
+  Serial.print(bad_brake_raw);
+  Serial.print(", brake_good: ");
+  Serial.println(good_brake_raw);
+
+  const unsigned char starboard_throttle_scaled = readingToCan(
+    starboard_throttle_raw,
     STARBOARD_THROTTLE_SCALE,
     STARBOARD_THROTTLE_OFFSET
   );
-  const unsigned char port_scaled = readingToCan(
-    port_raw,
+  const unsigned char port_throttle_scaled = readingToCan(
+    port_throttle_raw,
     PORT_THROTTLE_SCALE,
     PORT_THROTTLE_OFFSET
   );
 
-  Frame message = {.id=1, .body={starboard_scaled, port_scaled}, .len=2};
+  const uint8_t brake_scaled = readingToCan(
+    good_brake_raw,
+    BRAKE_SCALE,
+    BRAKE_OFFSET
+  );
+
+  Frame message = {.id=1, .body={starboard_throttle_scaled, port_throttle_scaled, brake_scaled, brake_scaled}, .len=4};
   CAN().write(message);
 }
 
@@ -97,13 +133,8 @@ unsigned int toRpm(const unsigned long clicks, const unsigned long micros) {
   return round(revsPerMinute);
 }
 
-void resetClicksAndTimer(const unsigned long curr) {
-  lastRpmTime = curr;
-  starboardClicks = 0;
-  portClicks = 0;
-}
-
 void recordRpm(Task*) {
+  return;
   // Cache values all at once for most accurate reading
   const unsigned long currTime = micros();
   const unsigned int cachedStarboardClicks = starboardClicks;
