@@ -6,8 +6,7 @@
 const int STARBOARD_THROTTLE_PIN = A0;
 const int PORT_THROTTLE_PIN = A1;
 
-const int STARBOARD_BRAKE_PIN = 16; //A2, PC2, PCINT10, pin_25
-const int PORT_BRAKE_PIN = 17; //A3, PC3, PCINT11, pin_26
+const int BRAKE_PIN = 17; //A3, PC3, PCINT11, pin_2-something
 
 // TODO change once we know exactly which pins these go on
 const int STARBOARD_ENCODER_PIN = 2;
