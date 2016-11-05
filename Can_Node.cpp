@@ -7,20 +7,13 @@
 
 const unsigned char ANALOG_MESSAGE_ID = 0x01;
 const int ANALOG_MESSAGE_PERIOD = 100;
-const float STARBOARD_THROTTLE_SCALE = 0.4061;
-const float PORT_THROTTLE_SCALE = STARBOARD_THROTTLE_SCALE;
-const int STARBOARD_THROTTLE_OFFSET = -97;
-const int PORT_THROTTLE_OFFSET = -97;
 
-// We apply the scaling m followed by the offset b
-// (so a raw offset of 100 is a scaled offset of 100m)
-//
-// not pushed = 105 raw = 0 in scaled world
-// pushed normal regular = 250 = 50 in scaled world
-// pushed normal foot = 400 raw = 100 in scaled world
-// pushed super full = 900 raw = 255+ in scaled world
-const float BRAKE_SCALE = 0.31;
-const float BRAKE_OFFSET = -33;
+const uint16_t BRAKE_LOWER_BOUND = 104;
+const uint16_t BRAKE_UPPER_BOUND = 900;
+const uint16_t STARBOARD_THROTTLE_LOWER_BOUND = 246;
+const uint16_t STARBOARD_THROTTLE_UPPER_BOUND = 885;
+const uint16_t PORT_THROTTLE_LOWER_BOUND = 246;
+const uint16_t PORT_THROTTLE_UPPER_BOUND = 879;
 
 Task sendAnalogCanMessageTask(ANALOG_MESSAGE_PERIOD, sendAnalogCanMessage);
 
@@ -48,11 +41,23 @@ int truncateToByte(int val) {
   return val;
 }
 
-unsigned char readingToCan(const int val, const float scale, const int offset=0) {
-  const float scaled_val = ((float)val) * scale;
-  const int offset_val = round(scaled_val) + offset;
-  const int bounded_val = truncateToByte(offset_val);
-  unsigned char short_val = (unsigned char)(bounded_val);
+uint8_t readingToCan(uint32_t reading, const uint32_t lower_bound, const uint32_t upper_bound) {
+  // Ensure reading is within expected range
+  reading = max(reading, lower_bound);
+  reading = min(reading, upper_bound);
+
+  // Make reading between 0 and diff
+  const uint32_t diff = upper_bound - lower_bound;
+  reading = reading - lower_bound;
+
+  // Now scale from [0:diff] to [0:255] 
+  reading = reading * 255;
+  reading = reading / diff;
+
+  // Finally do some bounding for paranoia
+  reading = min(reading, 255);
+  reading = max(reading, 0);
+  uint8_t short_val = (uint8_t)(reading);
   return short_val;
 }
 
@@ -62,28 +67,29 @@ void sendAnalogCanMessage(Task*) {
 
   const int brake_raw = analogRead(BRAKE_PIN);
 
-  Serial.print("throttle_right_raw: ");
-  Serial.print(starboard_throttle_raw);
-  Serial.print(", throttle_left_raw: ");
-  Serial.print(port_throttle_raw);
-  Serial.print(", brake_raw: ");
-  Serial.println(brake_raw);
+  // Serial.print("throttle_right_raw: ");
+  // Serial.print(starboard_throttle_raw);
+  // Serial.print(", throttle_left_raw: ");
+  // Serial.print(port_throttle_raw);
+  // Serial.print(", brake_raw: ");
+  // Serial.println(brake_raw);
 
-  const unsigned char starboard_throttle_scaled = readingToCan(
+  const uint8_t starboard_throttle_scaled = readingToCan(
     starboard_throttle_raw,
-    STARBOARD_THROTTLE_SCALE,
-    STARBOARD_THROTTLE_OFFSET
+    STARBOARD_THROTTLE_LOWER_BOUND,
+    STARBOARD_THROTTLE_UPPER_BOUND
   );
-  const unsigned char port_throttle_scaled = readingToCan(
+
+  const uint8_t port_throttle_scaled = readingToCan(
     port_throttle_raw,
-    PORT_THROTTLE_SCALE,
-    PORT_THROTTLE_OFFSET
+    PORT_THROTTLE_LOWER_BOUND,
+    PORT_THROTTLE_UPPER_BOUND
   );
 
   const uint8_t brake_scaled = readingToCan(
     brake_raw,
-    BRAKE_SCALE,
-    BRAKE_OFFSET
+    BRAKE_LOWER_BOUND,
+    BRAKE_UPPER_BOUND
   );
 
   // Serial.print("throttle_right: ");

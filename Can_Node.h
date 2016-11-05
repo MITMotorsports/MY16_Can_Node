@@ -7,7 +7,7 @@
 
 // Prototypes
 int truncateToByte(int val);
-unsigned char readingToCan(const int val, const float scale, const int offset);
+uint8_t readingToCan(const uint32_t reading, const uint32_t lower_bound, const uint32_t upper_bound);
 
 void sendAnalogCanMessage(Task*);
 
