@@ -16,8 +16,8 @@ const uint16_t PORT_THROTTLE_UPPER_BOUND = 879;
 const uint16_t BRAKE_LOWER_BOUND = 104;
 const uint16_t BRAKE_UPPER_BOUND = 900;
 
-const uint16_t STEERING_POT_LEFT_BOUND = 0;
-const uint16_t STEERING_POT_RIGHT_BOUND = 1023;
+const uint16_t STEERING_POT_RIGHT_BOUND = 275;
+const uint16_t STEERING_POT_LEFT_BOUND = 960;
 
 Task sendAnalogCanMessageTask(ANALOG_MESSAGE_PERIOD, sendAnalogCanMessage);
 
@@ -76,10 +76,9 @@ void sendAnalogCanMessage(Task*) {
   // Serial.print(", throttle_left_raw: ");
   // Serial.print(port_throttle_raw);
   // Serial.print(", brake_raw: ");
-  // Serial.println(brake_raw);
-
-  Serial.print("steering_raw: ");
-  Serial.println(steering_raw);
+  // Serial.print(brake_raw);
+  // Serial.print(", steering_raw: ");
+  // Serial.println(steering_raw);
 
   const uint8_t starboard_throttle_scaled = readingToCan(
     starboard_throttle_raw,
@@ -99,13 +98,21 @@ void sendAnalogCanMessage(Task*) {
     BRAKE_UPPER_BOUND
   );
 
+  const uint8_t steering_scaled = readingToCan(
+    steering_raw,
+    STEERING_POT_RIGHT_BOUND,
+    STEERING_POT_LEFT_BOUND
+  );
+
   // Serial.print("throttle_right: ");
   // Serial.print(starboard_throttle_scaled);
   // Serial.print(", throttle_left: ");
   // Serial.print(port_throttle_scaled);
   // Serial.print(", brake: ");
-  // Serial.println(brake_scaled);
+  // Serial.print(brake_scaled);
+  // Serial.print(", steering: ");
+  // Serial.println(steering_scaled);
 
-  Frame message = {.id=1, .body={starboard_throttle_scaled, port_throttle_scaled, brake_scaled, brake_scaled}, .len=4};
+  Frame message = {.id=1, .body={starboard_throttle_scaled, port_throttle_scaled, brake_scaled, steering_scaled}, .len=4};
   CAN().write(message);
 }
