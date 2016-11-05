@@ -6,8 +6,7 @@
 #include <Debouncer.h>
 
 // Prototypes
-int truncateToByte(int val);
-uint8_t readingToCan(const uint32_t reading, const uint32_t lower_bound, const uint32_t upper_bound);
+uint8_t readingToCan(const uint32_t reading, const uint16_t lower_bound, const uint16_t upper_bound);
 
 void sendAnalogCanMessage(Task*);
 

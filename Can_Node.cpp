@@ -5,15 +5,19 @@
 #include "Can_Controller.h"
 #include "Pins.h"
 
-const unsigned char ANALOG_MESSAGE_ID = 0x01;
-const int ANALOG_MESSAGE_PERIOD = 100;
+const uint8_t ANALOG_MESSAGE_ID = 0x01;
+const uint8_t ANALOG_MESSAGE_PERIOD = 100;
 
-const uint16_t BRAKE_LOWER_BOUND = 104;
-const uint16_t BRAKE_UPPER_BOUND = 900;
 const uint16_t STARBOARD_THROTTLE_LOWER_BOUND = 246;
 const uint16_t STARBOARD_THROTTLE_UPPER_BOUND = 885;
 const uint16_t PORT_THROTTLE_LOWER_BOUND = 246;
 const uint16_t PORT_THROTTLE_UPPER_BOUND = 879;
+
+const uint16_t BRAKE_LOWER_BOUND = 104;
+const uint16_t BRAKE_UPPER_BOUND = 900;
+
+const uint16_t STEERING_POT_LEFT_BOUND = 0;
+const uint16_t STEERING_POT_RIGHT_BOUND = 1023;
 
 Task sendAnalogCanMessageTask(ANALOG_MESSAGE_PERIOD, sendAnalogCanMessage);
 
@@ -35,37 +39,37 @@ void setup() {
   Serial.println("Started Can Node");
 }
 
-int truncateToByte(int val) {
-  val = min(val, 255);
-  val = max(val, 0);
-  return val;
-}
-
-uint8_t readingToCan(uint32_t reading, const uint32_t lower_bound, const uint32_t upper_bound) {
+uint8_t readingToCan(uint32_t reading, const uint16_t lower_bound, const uint16_t upper_bound) {
   // Ensure reading is within expected range
   reading = max(reading, lower_bound);
   reading = min(reading, upper_bound);
 
   // Make reading between 0 and diff
-  const uint32_t diff = upper_bound - lower_bound;
+  const uint16_t diff = upper_bound - lower_bound;
   reading = reading - lower_bound;
 
-  // Now scale from [0:diff] to [0:255] 
+  // Now scale from [0:diff] to [0:255].
+  // Note: it's critical that reading be a 32 bit int because otherwise this line will cause overflow!
   reading = reading * 255;
   reading = reading / diff;
 
-  // Finally do some bounding for paranoia
+  // Finally do some bounding for paranoia.
+  // This is probably a no-op but it's a cheap one so why not.
   reading = min(reading, 255);
   reading = max(reading, 0);
+
+  // This cast is safe because we have asserted reading is in range [0:255] in previous lines
   uint8_t short_val = (uint8_t)(reading);
   return short_val;
 }
 
 void sendAnalogCanMessage(Task*) {
-  const int starboard_throttle_raw = analogRead(STARBOARD_THROTTLE_PIN);
-  const int port_throttle_raw = analogRead(PORT_THROTTLE_PIN);
+  const int16_t starboard_throttle_raw = analogRead(STARBOARD_THROTTLE_PIN);
+  const int16_t port_throttle_raw = analogRead(PORT_THROTTLE_PIN);
 
-  const int brake_raw = analogRead(BRAKE_PIN);
+  const int16_t brake_raw = analogRead(BRAKE_PIN);
+
+  const int16_t steering_raw = analogRead(STEERING_PIN);
 
   // Serial.print("throttle_right_raw: ");
   // Serial.print(starboard_throttle_raw);
@@ -73,6 +77,9 @@ void sendAnalogCanMessage(Task*) {
   // Serial.print(port_throttle_raw);
   // Serial.print(", brake_raw: ");
   // Serial.println(brake_raw);
+
+  Serial.print("steering_raw: ");
+  Serial.println(steering_raw);
 
   const uint8_t starboard_throttle_scaled = readingToCan(
     starboard_throttle_raw,
