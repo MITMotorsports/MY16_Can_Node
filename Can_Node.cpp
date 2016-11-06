@@ -78,17 +78,14 @@ void setup() {
   SoftTimer.add(&sendRpmCanMessageTask);
 
   Serial.println("Started Can Node");
-
 }
 
-void sboard_click()
-{
+void sboard_click() {
   sboard_old = sboard_curr;
   sboard_curr = TCNT1;
 }
 
-void port_click()
-{
+void port_click() {
   port_old = port_curr;
   port_curr= TCNT1;
 }
@@ -98,8 +95,7 @@ void port_click()
 //Will run at 8MHz/256/1024 so ~30Hz
 //also am only pretty sure of 8MHz, if it's in fact 16 just some constant changing.
 //TIMER2_OVF_vect is triggered every time timer2 overflows
-ISR(TIMER2_OVF_vect)
-{
+ISR(TIMER2_OVF_vect) {
   //timer1 is at 125,000 Hz (8 MHz / 64) so one unit is 8*10^-6
   //one minute is 7,500,000 timer units
   //8 MHz / 64 * 60 = MAGIC because that's the number of timer clicks per minute
