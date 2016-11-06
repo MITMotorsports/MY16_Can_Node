@@ -205,14 +205,14 @@ void sendAnalogCanMessage(Task*) {
     STEERING_POT_LEFT_BOUND
   );
 
-  // Serial.print("throttle_right: ");
-  // Serial.print(starboard_throttle_scaled);
-  // Serial.print(", throttle_left: ");
-  // Serial.print(port_throttle_scaled);
-  // Serial.print(", brake: ");
-  // Serial.print(brake_scaled);
-  // Serial.print(", steering: ");
-  // Serial.println(steering_scaled);
+  Serial.print("throttle_right: ");
+  Serial.print(starboard_throttle_scaled);
+  Serial.print(", throttle_left: ");
+  Serial.print(port_throttle_scaled);
+  Serial.print(", brake: ");
+  Serial.print(brake_scaled);
+  Serial.print(", steering: ");
+  Serial.println(steering_scaled);
 
   Frame message = {.id=1, .body={starboard_throttle_scaled, port_throttle_scaled, brake_scaled, steering_scaled}, .len=4};
   CAN().write(message);
