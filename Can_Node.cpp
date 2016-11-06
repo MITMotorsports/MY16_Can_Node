@@ -7,11 +7,9 @@
 
 const uint8_t ANALOG_MESSAGE_ID = 0x01;
 const uint8_t ANALOG_MESSAGE_PERIOD = 100;
-Task sendAnalogCanMessageTask(ANALOG_MESSAGE_PERIOD, sendAnalogCanMessage);
 
 const uint8_t RPM_MESSAGE_ID = 0x10;
-const uint8_t RPM_MESSAGE_PERIOD = 50;
-Task sendRpmCanMessageTask(RPM_MESSAGE_PERIOD, sendRpmCanMessage);
+const uint8_t RPM_MESSAGE_PERIOD = 20;
 
 const uint16_t STARBOARD_THROTTLE_LOWER_BOUND = 246;
 const uint16_t STARBOARD_THROTTLE_UPPER_BOUND = 885;
@@ -31,6 +29,9 @@ volatile uint16_t port_old = 0;
 
 uint32_t sboard_rpm = 0;
 uint32_t port_rpm = 0;
+
+Task sendAnalogCanMessageTask(ANALOG_MESSAGE_PERIOD, sendAnalogCanMessage);
+Task sendRpmCanMessageTask(RPM_MESSAGE_PERIOD, sendRpmCanMessage);
 
 // Implementation
 void setup() {
@@ -162,8 +163,9 @@ uint8_t readingToCan(uint32_t reading, const uint16_t lower_bound, const uint16_
 void sendRpmCanMessage(Task*) {
   const uint16_t curr_starboard_rpm = sboard_rpm;
   const uint16_t curr_port_rpm = port_rpm;
-  (void)curr_port_rpm;
-  (void)curr_starboard_rpm;
+
+  Frame message = {.id=1, .body={lowByte(curr_starboard_rpm), highByte(curr_starboard_rpm), lowByte(curr_port_rpm), highByte(curr_port_rpm)}, .len=4};
+  CAN().write(message);
 }
 
 void sendAnalogCanMessage(Task*) {
@@ -171,6 +173,7 @@ void sendAnalogCanMessage(Task*) {
   const int16_t port_throttle_raw = analogRead(PORT_THROTTLE_PIN);
 
   const int16_t brake_raw = analogRead(BRAKE_PIN);
+
   const int16_t steering_raw = analogRead(STEERING_PIN);
 
   // Serial.print("throttle_right_raw: ");
@@ -218,4 +221,3 @@ void sendAnalogCanMessage(Task*) {
   Frame message = {.id=1, .body={starboard_throttle_scaled, port_throttle_scaled, brake_scaled, steering_scaled}, .len=4};
   CAN().write(message);
 }
-
