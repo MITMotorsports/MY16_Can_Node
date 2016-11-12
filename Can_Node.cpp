@@ -9,7 +9,7 @@ const uint8_t ANALOG_MESSAGE_ID = 0x01;
 const uint8_t ANALOG_MESSAGE_PERIOD = 100;
 
 const uint8_t RPM_MESSAGE_ID = 0x10;
-const uint8_t RPM_MESSAGE_PERIOD = 20;
+const uint8_t RPM_MESSAGE_PERIOD = 100;
 
 const uint16_t STARBOARD_THROTTLE_LOWER_BOUND = 246;
 const uint16_t STARBOARD_THROTTLE_UPPER_BOUND = 885;
@@ -22,13 +22,13 @@ const uint16_t BRAKE_UPPER_BOUND = 900;
 const uint16_t STEERING_POT_RIGHT_BOUND = 275;
 const uint16_t STEERING_POT_LEFT_BOUND = 960;
 
-volatile uint16_t sboard_curr = 0;
-volatile uint16_t port_curr = 0;
-volatile uint16_t sboard_old = 0;
-volatile uint16_t port_old = 0;
+volatile uint32_t sboard_curr = 0;
+volatile uint32_t port_curr = 0;
+volatile uint32_t sboard_old = 0;
+volatile uint32_t port_old = 0;
 
-uint32_t sboard_rpm = 0;
-uint32_t port_rpm = 0;
+volatile uint32_t sboard_rpm = 0;
+volatile uint32_t port_rpm = 0;
 
 Task sendAnalogCanMessageTask(ANALOG_MESSAGE_PERIOD, sendAnalogCanMessage);
 Task sendRpmCanMessageTask(RPM_MESSAGE_PERIOD, sendRpmCanMessage);
@@ -46,30 +46,22 @@ void setup() {
   pinMode(BRAKE_PIN, INPUT);
   pinMode(STEERING_PIN, INPUT);
 
-  //disable interrupts
-  cli();
-
   attachInterrupt(digitalPinToInterrupt(STARBOARD_ENCODER_PIN), sboard_click, RISING);
   attachInterrupt(digitalPinToInterrupt(PORT_ENCODER_PIN), port_click, RISING);
+
+  //disable interrupts
+  cli();
 
   //Link to datasheet with most of the magic numbers on it
   //http://www.atmel.com/Images/Atmel-42735-8-bit-AVR-Microcontroller-ATmega328-328P_datasheet.pdf
 
   //enable the timer2 - 8bit timer
-  TIMSK2 = 1<<TOIE2;
+  TIMSK2 |= 1<<TOIE2;
   //set the count to 0
   TCNT2 = 0;
   //CA22 is timer 2 prescalar of 1024
   //CS20 enables timer2
-  TCCR2B = (1<<CS22) | (1<<CS20);
-
-  //enable timer 1 - 16bit timer
-  TIMSK1 = 1<<TOIE1;
-  //set the count to 0
-  TCNT1 = 0;
-  //CS10 starts timer 1
-  //CS11 is timer 1 prescalar of 64
-  TCCR1B = (1<<CS10) | (1<<CS11);
+  TCCR2B |= (1<<CS22) | (1<<CS20);
 
   //enable interrupts
   sei();
@@ -82,13 +74,17 @@ void setup() {
 
 void sboard_click() {
   sboard_old = sboard_curr;
-  sboard_curr = TCNT1;
+  sboard_curr = micros();
+  // Serial.println("right");
 }
 
 void port_click() {
   port_old = port_curr;
-  port_curr= TCNT1;
+  port_curr = micros();
+
+  // Serial.println("left");
 }
+
 
 //interrupt routine for timer2 overflow.
 //timer 2 is an 8bit timer with a 1024 scaling
@@ -96,40 +92,59 @@ void port_click() {
 //also am only pretty sure of 8MHz, if it's in fact 16 just some constant changing.
 //TIMER2_OVF_vect is triggered every time timer2 overflows
 ISR(TIMER2_OVF_vect) {
+
+  // Micros timer has a resolution of 8 microseconds error:
+  // this is safe because smallest reasonable time between clicks is 1 millisecond.
+
+  // Micros timer overflows at 2^32 microseconds = 4000 seconds
   //timer1 is at 125,000 Hz (8 MHz / 64) so one unit is 8*10^-6
   //one minute is 7,500,000 timer units
   //8 MHz / 64 * 60 = MAGIC because that's the number of timer clicks per minute
-  #define MAGIC 7500000
-  //23 teeth on the wheel, 23 clicks per rotation, 1 semirotation is 1/23 rotation
-  #define TEETH 23
 
-  uint16_t local_sboard_curr = sboard_curr;
-  uint16_t local_port_curr = port_curr;
-  uint16_t local_sboard_old = sboard_old;
-  uint16_t local_port_old = port_old;
+  // including stdint.h doesn't give this for some reason so we def it here
+  #define UINT32_MAX 0xFFFFFFFF
+  // 1000000 mics in a second, 60 secs in a min.
+  // #define MICROS_PER_MIN 60000000
+  // number of teeth.
+  // #define CLICKS_PER_REV 23
+
+  // Precomputed MICROS_PER_MIN / CLICKS_PER_REV
+  #define SHORTCUT 2608696
+
+  uint32_t local_sboard_curr = sboard_curr;
+  uint32_t local_port_curr = port_curr;
+  uint32_t local_sboard_old = sboard_old;
+  uint32_t local_port_old = port_old;
+
   //allow this interrupt to be interrupted
   sei();
-  //make it rarer that it requres more logic to handle
-  TCNT1 = 0;
-  //using longs is safer because we need signed and the ability to interpret > 16 bits
-  int32_t sboard_delta = local_sboard_curr - local_sboard_old;
-  int32_t port_delta = local_port_curr - local_port_old;
-  //make sure that it's the absolute difference regardless of overflows
-  //assuming 16bit integers. I'm pretty sure that's what this is.
-  sboard_delta = sboard_delta >= 0 ? sboard_delta : (local_sboard_curr - (local_sboard_old - UINT_MAX));
-  port_delta = port_delta >= 0 ? port_delta : (local_port_curr - (local_port_old - UINT_MAX));
-  //converts clicks into RPM
-  //proper math is that one click per tick times MAGIC (7,500,000) / teeth (23) will net RPM.
-  uint32_t sboard_rpm = sboard_delta == 0 ? 0 : MAGIC / sboard_delta / TEETH;
-  uint32_t port_rpm = port_delta == 0 ? 0 : MAGIC / port_delta / TEETH;
 
-  Serial.print("port rpm:");
-  Serial.println(port_rpm);
-  Serial.print("starboard rpm:");
-  Serial.println(sboard_rpm);
+  uint32_t sboard_micros_per_click = local_sboard_curr - local_sboard_old;
+  uint32_t port_micros_per_click = local_port_curr - local_port_old;
 
-  #undef MAGIC
-  #undef TEETH
+  if (local_sboard_old > local_sboard_curr) {
+    // Micros has overflowed so this is safe from overflow
+    sboard_micros_per_click = (UINT32_MAX - local_sboard_old) + local_sboard_curr;
+  }
+  if (local_port_old > local_port_curr) {
+    // Micros has overflowed so this is safe from overflow
+    port_micros_per_click = (UINT32_MAX - local_port_old) + local_port_curr;
+  }
+
+  // Convert clicks into RPM.
+  //   (Micros / min) * (clicks / micro) * (revs / click)
+  //     -> micros_per_min / micros_per_click / clicks_per_rev
+
+  if (sboard_micros_per_click != 0) {
+    sboard_rpm = SHORTCUT / sboard_micros_per_click;
+  }
+  if (port_micros_per_click != 0) {
+    port_rpm = SHORTCUT / port_micros_per_click;
+  }
+
+  #undef MICROS_PER_MIN
+  #undef CLICKS_PER_REV
+  #undef UINT32_MAX
 }
 
 uint8_t readingToCan(uint32_t reading, const uint16_t lower_bound, const uint16_t upper_bound) {
@@ -157,10 +172,12 @@ uint8_t readingToCan(uint32_t reading, const uint16_t lower_bound, const uint16_
 }
 
 void sendRpmCanMessage(Task*) {
+  cli();
   const uint16_t curr_starboard_rpm = sboard_rpm;
   const uint16_t curr_port_rpm = port_rpm;
+  sei();
 
-  Frame message = {.id=1, .body={lowByte(curr_starboard_rpm), highByte(curr_starboard_rpm), lowByte(curr_port_rpm), highByte(curr_port_rpm)}, .len=4};
+  Frame message = {.id=RPM_MESSAGE_ID, .body={lowByte(curr_starboard_rpm), highByte(curr_starboard_rpm), lowByte(curr_port_rpm), highByte(curr_port_rpm)}, .len=4};
   CAN().write(message);
 }
 
@@ -169,7 +186,6 @@ void sendAnalogCanMessage(Task*) {
   const int16_t port_throttle_raw = analogRead(PORT_THROTTLE_PIN);
 
   const int16_t brake_raw = analogRead(BRAKE_PIN);
-
   const int16_t steering_raw = analogRead(STEERING_PIN);
 
   // Serial.print("throttle_right_raw: ");
@@ -205,15 +221,15 @@ void sendAnalogCanMessage(Task*) {
     STEERING_POT_LEFT_BOUND
   );
 
-  Serial.print("throttle_right: ");
-  Serial.print(starboard_throttle_scaled);
-  Serial.print(", throttle_left: ");
-  Serial.print(port_throttle_scaled);
-  Serial.print(", brake: ");
-  Serial.print(brake_scaled);
-  Serial.print(", steering: ");
-  Serial.println(steering_scaled);
+  // Serial.print("throttle_right: ");
+  // Serial.print(starboard_throttle_scaled);
+  // Serial.print(", throttle_left: ");
+  // Serial.print(port_throttle_scaled);
+  // Serial.print(", brake: ");
+  // Serial.print(brake_scaled);
+  // Serial.print(", steering: ");
+  // Serial.println(steering_scaled);
 
-  Frame message = {.id=1, .body={starboard_throttle_scaled, port_throttle_scaled, brake_scaled, steering_scaled}, .len=4};
+  Frame message = {.id=ANALOG_MESSAGE_ID, .body={starboard_throttle_scaled, port_throttle_scaled, brake_scaled, steering_scaled}, .len=4};
   CAN().write(message);
 }
