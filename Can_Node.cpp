@@ -111,10 +111,10 @@ ISR(TIMER2_OVF_vect) {
   // Precomputed MICROS_PER_MIN / CLICKS_PER_REV
   #define SHORTCUT 2608696
 
-  uint32_t local_sboard_curr = sboard_curr;
-  uint32_t local_port_curr = port_curr;
-  uint32_t local_sboard_old = sboard_old;
-  uint32_t local_port_old = port_old;
+  const uint32_t local_sboard_curr = sboard_curr;
+  const uint32_t local_port_curr = port_curr;
+  const uint32_t local_sboard_old = sboard_old;
+  const uint32_t local_port_old = port_old;
 
   //allow this interrupt to be interrupted
   sei();
@@ -135,11 +135,20 @@ ISR(TIMER2_OVF_vect) {
   //   (Micros / min) * (clicks / micro) * (revs / click)
   //     -> micros_per_min / micros_per_click / clicks_per_rev
 
+  const uint32_t curr_time = micros();
   if (sboard_micros_per_click != 0) {
     sboard_rpm = SHORTCUT / sboard_micros_per_click;
+    if (curr_time - local_sboard_curr > 200000) {
+      // It's been a second since the last click - we're probably stopped
+      sboard_rpm = 0;
+    }
   }
   if (port_micros_per_click != 0) {
     port_rpm = SHORTCUT / port_micros_per_click;
+    if (curr_time - local_port_curr > 200000) {
+      // It's been a second since the last click - we're probably stopped
+      port_rpm = 0;
+    }
   }
 
   #undef MICROS_PER_MIN
